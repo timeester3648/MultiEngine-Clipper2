@@ -1,16 +1,20 @@
 ﻿/*******************************************************************************
 * Author    :  Angus Johnson                                                   *
 * Date      :  16 September 2022                                               *
-* Website   :  http://www.angusj.com                                           *
+* Website   :  https://www.angusj.com                                          *
 * Copyright :  Angus Johnson 2010-2022                                         *
-* License   :  http://www.boost.org/LICENSE_1_0.txt                            *
+* License   :  https://www.boost.org/LICENSE_1_0.txt                           *
 *******************************************************************************/
 
 using System;
 using System.IO;
 using System.Diagnostics;
 
+#if USINGZ
+namespace Clipper2ZLib
+#else
 namespace Clipper2Lib
+#endif
 {
 
   public static class ClipperFileIO

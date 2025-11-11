@@ -1,13 +1,12 @@
 /*******************************************************************************
 * Author    :  Angus Johnson                                                   *
-* Date      :  5 July 2024                                                     *
-* Website   :  http://www.angusj.com                                           *
-* Copyright :  Angus Johnson 2010-2024                                         *
+* Date      :  11 October 2025                                                 *
+* Website   :  https://www.angusj.com                                          *
+* Copyright :  Angus Johnson 2010-2025                                         *
 * Purpose   :  FAST rectangular clipping                                       *
-* License   :  http://www.boost.org/LICENSE_1_0.txt                            *
+* License   :  https://www.boost.org/LICENSE_1_0.txt                           *
 *******************************************************************************/
 
-#include <cmath>
 #include "clipper2/clipper.h"
 #include "clipper2/clipper.rectclip.h"
 
@@ -74,8 +73,8 @@ namespace Clipper2Lib {
   bool GetSegmentIntersection(const Point64& p1,
     const Point64& p2, const Point64& p3, const Point64& p4, Point64& ip)
   {
-    double res1 = CrossProduct(p1, p3, p4);
-    double res2 = CrossProduct(p2, p3, p4);
+    int res1 = CrossProductSign(p1, p3, p4);
+    int res2 = CrossProductSign(p2, p3, p4);
     if (res1 == 0)
     {
       ip = p1;
@@ -94,8 +93,8 @@ namespace Clipper2Lib {
     }
     if ((res1 > 0) == (res2 > 0)) return false;
 
-    double res3 = CrossProduct(p3, p1, p2);
-    double res4 = CrossProduct(p4, p1, p2);
+    int res3 = CrossProductSign(p3, p1, p2);
+    int res4 = CrossProductSign(p4, p1, p2);
     if (res3 == 0)
     {
       ip = p3;
@@ -113,7 +112,7 @@ namespace Clipper2Lib {
     if ((res3 > 0) == (res4 > 0)) return false;
 
     // segments must intersect to get here
-    return GetSegmentIntersectPt(p1, p2, p3, p4, ip);
+    return GetLineIntersectPt(p1, p2, p3, p4, ip);
   }
 
   inline bool GetIntersection(const Path64& rectPath,
@@ -224,7 +223,7 @@ namespace Clipper2Lib {
     const Point64& prev_pt, const Point64& curr_pt, const Point64& rect_mp)
   {
     if (AreOpposites(prev, curr))
-      return CrossProduct(prev_pt, rect_mp, curr_pt) < 0;
+      return CrossProductSign(prev_pt, rect_mp, curr_pt) < 0;
     else
       return HeadingClockwise(prev, curr);
   }
@@ -282,7 +281,7 @@ namespace Clipper2Lib {
   {
     if (op->edge) return;
     op->edge = &edge;
-    edge.push_back(op);
+    edge.emplace_back(op);
   }
 
   inline void UncoupleEdge(OutPt2* op)
@@ -328,7 +327,7 @@ namespace Clipper2Lib {
       result->pt = pt;
       result->next = result;
       result->prev = result;
-      results_.push_back(result);
+      results_.emplace_back(result);
     }
     else
     {
@@ -489,7 +488,7 @@ namespace Clipper2Lib {
         {
           bool isClockw = IsClockwise(prev, loc, prev_pt, path[i], rect_mp_);
           do {
-            start_locs_.push_back(prev);
+            start_locs_.emplace_back(prev);
             prev = GetAdjacentLocation(prev, isClockw);
           } while (prev != loc);
           crossing_loc = crossing_prev; // still not crossed
@@ -514,7 +513,7 @@ namespace Clipper2Lib {
         if (first_cross_ == Location::Inside)
         {
           first_cross_ = crossing_loc;
-          start_locs_.push_back(prev);
+          start_locs_.emplace_back(prev);
         }
         else if (prev != crossing_loc)
         {
@@ -536,7 +535,7 @@ namespace Clipper2Lib {
         if (first_cross_ == Location::Inside)
         {
           first_cross_ = loc;
-          start_locs_.push_back(prev);
+          start_locs_.emplace_back(prev);
         }
 
         loc = crossing_loc;
@@ -750,7 +749,7 @@ namespace Clipper2Lib {
       if (!isRejoining)
       {
         size_t new_idx = results_.size();
-        results_.push_back(p1a);
+        results_.emplace_back(p1a);
         SetNewOwner(p1a, new_idx);
       }
 
@@ -861,11 +860,11 @@ namespace Clipper2Lib {
     if (!op2) return Path64();
 
     Path64 result;
-    result.push_back(op->pt);
+    result.emplace_back(op->pt);
     op2 = op->next;
     while (op2 != op)
     {
-      result.push_back(op2->pt);
+      result.emplace_back(op2->pt);
       op2 = op2->next;
     }
     return result;
@@ -885,7 +884,7 @@ namespace Clipper2Lib {
       else if (rect_.Contains(path_bounds_))
       {
         // the path must be completely inside rect_
-        result.push_back(path);
+        result.emplace_back(path);
         continue;
       }
 
@@ -898,7 +897,7 @@ namespace Clipper2Lib {
       {
         Path64 tmp = GetPath(op);
         if (!tmp.empty())
-          result.emplace_back(tmp);
+          result.emplace_back(std::move(tmp));
       }
 
       //clean up after every loop
@@ -930,7 +929,7 @@ namespace Clipper2Lib {
       {
         Path64 tmp = GetPath(op);
         if (!tmp.empty())
-          result.emplace_back(tmp);
+          result.emplace_back(std::move(tmp));
       }
       results_.clear();
 
@@ -1015,11 +1014,11 @@ namespace Clipper2Lib {
     Path64 result;
     if (!op || op == op->next) return result;
     op = op->next; // starting at path beginning
-    result.push_back(op->pt);
+    result.emplace_back(op->pt);
     OutPt2 *op2 = op->next;
     while (op2 != op)
     {
-      result.push_back(op2->pt);
+      result.emplace_back(op2->pt);
       op2 = op2->next;
     }
     return result;

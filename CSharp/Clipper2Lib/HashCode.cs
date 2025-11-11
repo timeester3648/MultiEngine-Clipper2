@@ -3,7 +3,11 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 
+#if USINGZ
+namespace Clipper2ZLib
+#else
 namespace Clipper2Lib
+#endif
 {
   /*
 
@@ -42,7 +46,7 @@ namespace Clipper2Lib
     OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
     You can contact the author at :
-    - xxHash homepage: http://www.xxhash.com
+    - xxHash homepage: https://www.xxhash.com
     - xxHash source repository : https://github.com/Cyan4973/xxHash
   */
 

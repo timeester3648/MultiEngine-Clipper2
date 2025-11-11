@@ -1,17 +1,21 @@
 ﻿/*******************************************************************************
 * Author    :  Angus Johnson                                                   *
-* Date      :  22 November 2024                                                *
-* Website   :  http://www.angusj.com                                           *
-* Copyright :  Angus Johnson 2010-2024                                         *
+* Date      :  11 October 2025                                                 *
+* Website   :  https://www.angusj.com                                          *
+* Copyright :  Angus Johnson 2010-2025                                         *
 * Purpose   :  Path Offset (Inflate/Shrink)                                    *
-* License   :  http://www.boost.org/LICENSE_1_0.txt                            *
+* License   :  https://www.boost.org/LICENSE_1_0.txt                           *
 *******************************************************************************/
 
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
+#if USINGZ
+namespace Clipper2ZLib
+#else
 namespace Clipper2Lib
+#endif
 {
   public enum JoinType
   {
@@ -53,11 +57,12 @@ namespace Clipper2Lib
 
         if (endType == EndType.Polygon)
         {
-          lowestPathIdx = GetLowestPathIdx(inPaths);
+          bool isNegArea;
+          GetLowestPathInfo(inPaths, out lowestPathIdx, out isNegArea);
           // the lowermost path must be an outer path, so if its orientation is negative,
           // then flag that the whole group is 'reversed' (will negate delta etc.)
           // as this is much more efficient than reversing every path.
-          pathsReversed = (lowestPathIdx >= 0) && (Clipper.Area(inPaths[lowestPathIdx]) < 0);
+          pathsReversed = (lowestPathIdx >= 0) && isNegArea;
         }
         else
         {
@@ -68,6 +73,20 @@ namespace Clipper2Lib
     }
 
     private const double Tolerance = 1.0E-12;
+
+    // Clipper2 approximates arcs by using series of relatively short straight
+    //line segments. And logically, shorter line segments will produce better arc
+    // approximations. But very short segments can degrade performance, usually
+    // with little or no discernable improvement in curve quality. Very short
+    // segments can even detract from curve quality, due to the effects of integer
+    // rounding. Since there isn't an optimal number of line segments for any given
+    // arc radius (that perfectly balances curve approximation with performance),
+    // arc tolerance is user defined. Nevertheless, when the user doesn't define
+    // an arc tolerance (ie leaves alone the 0 default value), the calculated
+    // default arc tolerance (offset_radius / 500) generally produces good (smooth)
+    // arc approximations without producing excessively small segment lengths.
+    // See also: https://www.angusj.com/clipper2/Docs/Trigonometry.htm
+    private const double arc_const = 0.002; // <-- 1/500
 
     private readonly List<Group> _groupList = new List<Group>();
     private Path64 pathOut = new Path64();
@@ -185,8 +204,9 @@ namespace Clipper2Lib
       FillRule fillRule = pathsReversed ? FillRule.Negative : FillRule.Positive;
 
       // clean up self-intersections ...
-      Clipper64 c = new Clipper64 { PreserveCollinear = PreserveCollinear, // the solution should retain the orientation of the input
-        ReverseSolution = ReverseSolution != pathsReversed };
+      Clipper64 c = new Clipper64();
+      c.PreserveCollinear = PreserveCollinear;
+      c.ReverseSolution = ReverseSolution != pathsReversed;
 #if USINGZ
       c.ZCallback = ZCB;
 #endif
@@ -234,22 +254,29 @@ namespace Clipper2Lib
       Execute(1.0, solution);
     }    
     
-    internal static int GetLowestPathIdx(Paths64 paths)
+    internal static void GetLowestPathInfo(Paths64 paths, out int idx, out bool isNegArea)
     {
-      int result = -1;
+      idx = -1;
+      isNegArea = false;
       Point64 botPt = new Point64(long.MaxValue, long.MinValue);
       for (int i = 0; i < paths.Count; ++i)
       {
+        double a = double.MaxValue;
         foreach (Point64 pt in paths[i])
 		    {
           if ((pt.Y < botPt.Y) ||
             ((pt.Y == botPt.Y) && (pt.X >= botPt.X))) continue;
-          result = i;
+          if (a == double.MaxValue)
+          {
+            a = Clipper.Area(paths[i]);
+            if (a == 0) break; // invalid closed path so break from inner loop
+            isNegArea = a < 0;
+          }
+          idx = i;
           botPt.X = pt.X;
           botPt.Y = pt.Y;
         }
       }
-	    return result;
     }
 
   [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -298,35 +325,6 @@ namespace Clipper2Lib
     private static PointD GetAvgUnitVector(PointD vec1, PointD vec2)
     {
 	    return NormalizeVector(new PointD(vec1.x + vec2.x, vec1.y + vec2.y));
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static PointD IntersectPoint(PointD pt1a, PointD pt1b, PointD pt2a, PointD pt2b)
-    {
-      if (InternalClipper.IsAlmostZero(pt1a.x - pt1b.x)) //vertical
-      {
-        if (InternalClipper.IsAlmostZero(pt2a.x - pt2b.x)) return new PointD(0, 0);
-        double m2 = (pt2b.y - pt2a.y) / (pt2b.x - pt2a.x);
-        double b2 = pt2a.y - m2 * pt2a.x;
-        return new PointD(pt1a.x, m2* pt1a.x + b2);
-      }
-
-      if (InternalClipper.IsAlmostZero(pt2a.x - pt2b.x)) //vertical
-      {
-        double m1 = (pt1b.y - pt1a.y) / (pt1b.x - pt1a.x);
-        double b1 = pt1a.y - m1 * pt1a.x;
-        return new PointD(pt2a.x, m1* pt2a.x + b1);
-      }
-      else
-      {
-        double m1 = (pt1b.y - pt1a.y) / (pt1b.x - pt1a.x);
-        double b1 = pt1a.y - m1 * pt1a.x;
-        double m2 = (pt2b.y - pt2a.y) / (pt2b.x - pt2a.x);
-        double b2 = pt2a.y - m2 * pt2a.x;
-        if (InternalClipper.IsAlmostZero(m1 - m2)) return new PointD(0, 0);
-        double x = (b2 - b1) / (m1 - m2);
-        return new PointD(x, m1 * x + b1);
-      }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -429,7 +427,7 @@ namespace Clipper2Lib
         PointD pt4 = new PointD(
           pt3.x + vec.x * _groupDelta,
           pt3.y + vec.y * _groupDelta);
-        PointD pt = IntersectPoint(pt1, pt2, pt3, pt4);
+        InternalClipper.GetLineIntersectPt(pt1, pt2, pt3, pt4, out PointD pt);
 #if USINGZ
         pt.z = ptQ.z;
 #endif    
@@ -440,7 +438,7 @@ namespace Clipper2Lib
       else
       {
         PointD pt4 = GetPerpendicD(path[j], _normals[k]);
-        PointD pt = IntersectPoint(pt1, pt2, pt3, pt4);
+        InternalClipper.GetLineIntersectPt(pt1, pt2, pt3, pt4, out PointD pt);
 #if USINGZ
         pt.z = ptQ.z;
 #endif
@@ -474,9 +472,7 @@ namespace Clipper2Lib
         // when DeltaCallback is assigned, _groupDelta won't be constant,
         // so we'll need to do the following calculations for *every* vertex.
         double absDelta = Math.Abs(_groupDelta);
-        double arcTol = ArcTolerance > 0.01 ?
-          ArcTolerance :
-          Math.Log10(2 + absDelta) * InternalClipper.defaultArcTolerance;
+        double arcTol = ArcTolerance > 0.01 ? ArcTolerance : absDelta * arc_const;
         double stepsPer360 = Math.PI / Math.Acos(1 - arcTol / absDelta);
         _stepSin = Math.Sin((2 * Math.PI) / stepsPer360);
         _stepCos = Math.Cos((2 * Math.PI) / stepsPer360);
@@ -680,14 +676,7 @@ namespace Clipper2Lib
 
       if (group.joinType == JoinType.Round || group.endType == EndType.Round)
       {
-        // calculate the number of steps required to approximate a circle
-        // (see http://www.angusj.com/clipper2/Docs/Trigonometry.htm)
-        // arcTol - when arc_tolerance_ is undefined (0) then curve imprecision
-        // will be relative to the size of the offset (delta). Obviously very
-        //large offsets will almost always require much less precision.
-        double arcTol = ArcTolerance > 0.01 ?
-          ArcTolerance :              
-          Math.Log10(2 + absDelta) * InternalClipper.defaultArcTolerance; 
+        double arcTol = ArcTolerance > 0.01 ? ArcTolerance : absDelta * arc_const;
         double stepsPer360 = Math.PI / Math.Acos(1 - arcTol / absDelta);
         _stepSin = Math.Sin((2 * Math.PI) / stepsPer360);
         _stepCos = Math.Cos((2 * Math.PI) / stepsPer360);
