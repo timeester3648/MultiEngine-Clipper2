@@ -2,7 +2,7 @@ unit Clipper.Core;
 
 (*******************************************************************************
 * Author    :  Angus Johnson                                                   *
-* Date      :  12 October 2025                                                 *
+* Date      :  15 December 2025                                                *
 * Website   :  https://www.angusj.com                                          *
 * Copyright :  Angus Johnson 2010-2024                                         *
 * Purpose   :  Core Clipper Library module                                     *
@@ -160,6 +160,9 @@ type
 
   EClipper2LibException = class(Exception);
 
+function GetSign(const val: double): integer;
+  {$IFDEF INLINING} inline; {$ENDIF}
+
 function Area(const path: TPath64): Double; overload;
 function Area(const paths: TPaths64): Double; overload;
   {$IFDEF INLINING} inline; {$ENDIF}
@@ -178,7 +181,6 @@ function CrossProduct(const vec1, vec2: TPointD): double; overload;
 function CrossProduct(const pt1, pt2, pt3: TPoint64): double; overload;
   {$IFDEF INLINING} inline; {$ENDIF}
 function CrossProductIsZero(const pt1, pt2, pt3: TPoint64): Boolean;
-  {$IFDEF INLINING} inline; {$ENDIF}
 function CrossProductSign(const pt1, pt2, pt3: TPoint64): integer;
 
 function DotProduct(const vec1, vec2: TPointD): double; overload;
@@ -1974,6 +1976,7 @@ function MultiplyUInt64(a, b: UInt64): TUInt128; // #834, #835
 var
   x1, x2, x3: UInt64;
 begin
+  // precondition: neither parameter has its highest bit set
   x1 := (a and $FFFFFFFF) * (b and $FFFFFFFF);
   x2 := (a shr 32) * (b and $FFFFFFFF) + (x1 shr 32);
   x3 := (a and $FFFFFFFF) * (b shr 32) + (x2 and $FFFFFFFF);
@@ -2115,10 +2118,10 @@ begin
       end;
       if (ab.lo64 > cd.lo64)  then Result := 1
       else Result := -1;
-      if (signAB < 0) then Result := -Result;
     end
     else if (ab.hi64 > cd.hi64) then Result := 1
     else Result := -1;
+    if (signAB < 0) then Result := -Result;
   end
   else if (signAB > signCD) then Result := 1
   else Result := -1;
@@ -2228,14 +2231,17 @@ begin
     Result := false
   else if inclusive then
   begin
-    //result **includes** segments that touch at an end point
+    //result **includes** segments that share an end point
     t := ((s1a.x-s2a.x) * dy2 - (s1a.y-s2a.y) * dx2);
+    //result is true if segments 'intersect' at a segment end-point
     if (t = 0) then Result := true
     else if (t > 0) then
       Result := (cp > 0) and (t <= cp)
     else
       Result := (cp < 0) and (t >= cp);
     if not Result then Exit;
+    // at this point a *line* may intersect a segment,
+    // but now let's make sure that *segment* intersect
     t := ((s1a.x-s2a.x) * dy1 - (s1a.y-s2a.y) * dx1);
     if (t = 0) then Result := true
     else if (t > 0) then
@@ -2244,14 +2250,17 @@ begin
       Result := (cp < 0) and (t >= cp);
   end else
   begin
-    //result **excludes** segments that touch at an end point
+    //result **excludes** segments that share an end point
     t := ((s1a.x-s2a.x) * dy2 - (s1a.y-s2a.y) * dx2);
+    //result is false if segments 'intersect' at an end-point
     if (t = 0) then Result := false
     else if (t > 0) then
       Result := (cp > 0) and (t < cp)
     else
       Result := (cp < 0) and (t > cp);
     if not Result then Exit;
+    // at this point a *line* may intersect a segment,
+    // but now let's make sure that *segment* intersect
     t := ((s1a.x-s2a.x) * dy1 - (s1a.y-s2a.y) * dx1);
     if (t = 0) then Result := false
     else if (t > 0) then
